@@ -10,16 +10,18 @@ def index():
     transcripts_dir = Path('transcripts')
     transcripts = []
     
-    if transcripts_dir.exists():
+    # Check if directory exists and has files
+    if transcripts_dir.exists() and transcripts_dir.is_dir():
         for file in transcripts_dir.glob('*.html'):
-            stats = file.stat()
-            transcripts.append({
-                'filename': file.name,
-                'name': file.stem.replace('transcript-', '').replace('-', ' ').title(),
-                'channel_name': file.stem,
-                'created_date': datetime.fromtimestamp(stats.st_ctime).strftime('%Y-%m-%d %H:%M'),
-                'size': f"{stats.st_size:,}"
-            })
+            if file.is_file():  # Make sure it's a file, not a directory
+                stats = file.stat()
+                transcripts.append({
+                    'filename': file.name,
+                    'name': file.stem.replace('transcript-', '').replace('-', ' ').title(),
+                    'channel_name': file.stem,
+                    'created_date': datetime.fromtimestamp(stats.st_ctime).strftime('%Y-%m-%d %H:%M'),
+                    'size': f"{stats.st_size:,}"
+                })
     
     transcripts.sort(key=lambda x: x['filename'], reverse=True)
     
@@ -32,10 +34,21 @@ def serve_transcript(filename):
     return send_from_directory('transcripts', filename)
 
 if __name__ == '__main__':
-    # Create necessary directories
-    Path('transcripts').mkdir(exist_ok=True)
-    Path('templates').mkdir(exist_ok=True)
-    Path('static').mkdir(exist_ok=True)
+    # Create directories only if they don't exist (safe method)
+    try:
+        Path('transcripts').mkdir(exist_ok=True)
+    except FileExistsError:
+        pass  # Directory already exists, which is fine
+    
+    try:
+        Path('templates').mkdir(exist_ok=True)
+    except FileExistsError:
+        pass
+    
+    try:
+        Path('static').mkdir(exist_ok=True)
+    except FileExistsError:
+        pass
     
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
