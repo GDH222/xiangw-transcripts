@@ -681,13 +681,15 @@ async def setup(bot):
     await bot.add_cog(TicketBot(bot))
 
 async def main():
-    bot_token = ""  # Paste your token directly here
+    # Get token from system environment variables
+    bot_token = os.environ.get("DISCORD_BOT_TOKEN")
     
-    if not bot_token or bot_token == "TOKEN":
-        print("Error: Please set your actual bot token in the code")
+    if not bot_token:
+        print("Error: DISCORD_BOT_TOKEN environment variable not set")
+        print("Set it with: export DISCORD_BOT_TOKEN='your_token_here'")
         exit(1)
     
-    await bot.add_cog(TicketBot(bot))
+    await setup(bot)
     await bot.start(bot_token)
 
 if __name__ == "__main__":
