@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord Transcripts</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📝 Discord Ticket Transcripts</h1>
+            <p>View your ticket conversations</p>
+        </header>
+        
+        <main>
+            <div class="transcript-list">
+                {% if transcripts %}
+                    {% for transcript in transcripts %}
+                    <div class="transcript-item">
+                        <h3>{{ transcript.name }}</h3>
+                        <p>Channel: {{ transcript.channel_name }}</p>
+                        <p>Created: {{ transcript.created_date }}</p>
+                        <p>Size: {{ transcript.size }} bytes</p>
+                        <a href="{{ url_for('serve_transcript', filename=transcript.filename) }}" 
+                           class="transcript-link" target="_blank">
+                            View Full Transcript
+                        </a>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty">
+                        <p>No transcripts available yet.</p>
+                        <p>Transcripts will appear here after tickets are closed.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </main>
+        
+        <footer>
+            <p>Generated automatically by Discord Bot • {{ current_time }}</p>
+        </footer>
+    </div>
+</body>
+</html>
