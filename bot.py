@@ -13,8 +13,9 @@ from datetime import datetime
 
 # Global variables
 user_cooldowns = {}
-COOLDOWN_SECONDS = 30
+COOLDOWN_SECONDS = 5
 
+# CORRECT INTENTS SETUP
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -55,8 +56,9 @@ class TicketForm(ui.Modal, title="Trade Information"):
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         cog = interaction.client.get_cog("TicketBot")
-        await cog.process_ticket_form(interaction, self.ticket_type, self.your_side.value, 
-                                    self.their_side.value, self.their_id.value, self.tip.value)
+        if cog:
+            await cog.process_ticket_form(interaction, self.ticket_type, self.your_side.value, 
+                                        self.their_side.value, self.their_id.value, self.tip.value)
 
 class TicketPanelView(ui.View):
     def __init__(self):
@@ -66,10 +68,12 @@ class TicketPanelView(ui.View):
 class TicketTypeSelect(ui.Select):
     def __init__(self):
         options = [
-            SelectOption(label="Trial Middleman - $25/6.5K Rbx and below", value="trial_middleman"),
-            SelectOption(label="Beginner Middleman - $50/13K Rbx and below", value="beginner_middleman"),
-            SelectOption(label="Advanced Middleman - $100/25K Rbx and below", value="advanced_middleman"),
-            SelectOption(label="Head Middleman - Above $100/25K Rbx", value="head_middleman")
+            SelectOption(label="Trial Middleman - Between 0$-$25/0-6K Rbx", value="trial_middleman"),
+            SelectOption(label="Novice Middleman - Between 25$-$50/6K-12K Rbx", value="novice_middleman"),
+            SelectOption(label="Advanced Middleman - Between 50$-$75/12K-18K Rbx", value="advanced_middleman"),
+            SelectOption(label="Expert Middleman - Between 75$-$100/18K-25K Rbx", value="expert_middleman"),
+            SelectOption(label="Senior Middleman - Between 100$-$150/25K-35K Rbx", value="senior_middleman"),
+            SelectOption(label="Head Middleman - No Limit or Above 150$/35K Rbx", value="head_middleman")
         ]
         super().__init__(
             placeholder="Select middleman service needed...",
@@ -82,6 +86,11 @@ class TicketTypeSelect(ui.Select):
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.send_modal(TicketForm(self.values[0]))
 
+class TranscriptView(discord.ui.View):
+    def __init__(self, html_url):
+        super().__init__()
+        self.add_item(discord.ui.Button(label="🌐 View Online", url=html_url, style=discord.ButtonStyle.link))
+
 class TicketControlView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -90,19 +99,22 @@ class TicketControlView(ui.View):
     async def close_ticket(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.defer()
         cog = interaction.client.get_cog("TicketBot")
-        await cog.close_ticket(interaction)
+        if cog:
+            await cog.close_ticket(interaction)
     
     @ui.button(label="Transcript", style=ButtonStyle.blurple, custom_id="generate_transcript")
     async def generate_transcript(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.defer()
         cog = interaction.client.get_cog("TicketBot")
-        await cog.generate_transcript(interaction)
+        if cog:
+            await cog.generate_transcript_button(interaction)
     
     @ui.button(label="Delete", style=ButtonStyle.grey, custom_id="delete_ticket")
     async def delete_ticket(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.defer()
         cog = interaction.client.get_cog("TicketBot")
-        await cog.delete_ticket(interaction)
+        if cog:
+            await cog.delete_ticket(interaction)
 
 class TicketOpenView(ui.View):
     def __init__(self):
@@ -112,19 +124,22 @@ class TicketOpenView(ui.View):
     async def open_ticket(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.defer()
         cog = interaction.client.get_cog("TicketBot")
-        await cog.open_ticket_button(interaction)
+        if cog:
+            await cog.open_ticket_button(interaction)
     
     @ui.button(label="Transcript", style=ButtonStyle.blurple, custom_id="generate_transcript_closed")
     async def generate_transcript_closed(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.defer()
         cog = interaction.client.get_cog("TicketBot")
-        await cog.generate_transcript(interaction)
+        if cog:
+            await cog.generate_transcript_button(interaction)
     
     @ui.button(label="Delete", style=ButtonStyle.grey, custom_id="delete_ticket_closed")
     async def delete_ticket_closed(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.defer()
         cog = interaction.client.get_cog("TicketBot")
-        await cog.delete_ticket(interaction)
+        if cog:
+            await cog.delete_ticket(interaction)
 
 class TicketBot(commands.Cog):
     def __init__(self, bot):
@@ -133,18 +148,34 @@ class TicketBot(commands.Cog):
         self.transcripts_channel_name = "ticket-transcripts"
         self.support_roles = {
             "trial_middleman": "Trial Middleman",
-            "beginner_middleman": "Beginner Middleman", 
+            "novice_middleman": "Novice Middleman", 
             "advanced_middleman": "Advanced Middleman",
+            "expert_middleman": "Expert Middleman",
+            "senior_middleman": "Senior Middleman",
             "head_middleman": "Head Middleman"
+
         }
         self.ticket_counter = 1
         self.TICKET_CATEGORY_ID = None
         self.ticket_members: Dict[int, List[int]] = {}
         
         # Transcripts directory setup
-        self.transcripts_dir = Path("static/transcripts")
-        self.transcripts_dir.mkdir(exist_ok=True, parents=True)
-        self.website_url = os.environ.get("WEBSITE_URL", "http://localhost:5000")
+        self.transcripts_dir = Path("transcripts")
+        self._ensure_directory(self.transcripts_dir)
+        self.website_url = os.environ.get("WEBSITE_URL", "https://xiangw-transcripts.onrender.com")
+        
+        if self.website_url.endswith('/'):
+            self.website_url = self.website_url[:-1]
+
+    def _ensure_directory(self, path):
+        """Safely create directory if it doesn't exist"""
+        try:
+            path.mkdir(exist_ok=True)
+        except FileExistsError:
+            if not path.is_dir():
+                print(f"Warning: {path} exists but is not a directory!")
+        except Exception as e:
+            print(f"Error creating directory {path}: {e}")
 
     async def cog_load(self):
         self.bot.add_view(TicketPanelView())
@@ -158,7 +189,7 @@ class TicketBot(commands.Cog):
             category = discord.utils.get(channel.guild.categories, name=self.ticket_category_name)
             if category:
                 self.TICKET_CATEGORY_ID = category.id
-        return channel.category.id == self.TICKET_CATEGORY_ID
+        return channel.category and channel.category.id == self.TICKET_CATEGORY_ID
 
     async def has_permission(self, member: discord.Member) -> bool:
         if member.guild_permissions.administrator:
@@ -181,7 +212,7 @@ class TicketBot(commands.Cog):
                                for att in message.attachments]
             })
         
-        # Generate HTML using Python string formatting
+        # Generate HTML
         html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -237,26 +268,153 @@ class TicketBot(commands.Cog):
         return html
 
     async def generate_transcript(self, channel: discord.TextChannel):
-        """Generate HTML transcript and save to static directory"""
+        """Generate HTML transcript and save to directory"""
         try:
+            # Generate HTML content
             html_content = await self.create_html_transcript(channel)
             
             # Create filename
             timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            filename = f"transcript-{channel.name}-{timestamp}.html"
-            filepath = self.transcripts_dir / filename
+            html_filename = f"transcript-{channel.name}-{timestamp}.html"
+            
+            html_filepath = self.transcripts_dir / html_filename
+            
+            # Ensure directory exists
+            self.transcripts_dir.mkdir(exist_ok=True)
             
             # Save file
-            with open(filepath, "w", encoding="utf-8") as f:
+            with open(html_filepath, "w", encoding="utf-8") as f:
                 f.write(html_content)
             
-            # Return the URL for the transcript
-            transcript_url = f"{self.website_url}/transcripts/{filename}"
-            return transcript_url
+            print(f"Saved file: {html_filepath}")
+            print(f"Files in transcripts directory: {[f.name for f in self.transcripts_dir.glob('*')]}")
+
+            # Verify file was created
+            if html_filepath.exists():
+                print(f"✅ File successfully created: {html_filepath}")
+                print(f"✅ File size: {html_filepath.stat().st_size} bytes")
+            else:
+                print(f"❌ File was not created: {html_filepath}")
+            
+            # Return URL and filename
+            html_url = f"{self.website_url}/transcripts/{html_filename}"
+            print(f"✅ Generated URL: {html_url}")
+            
+            return html_url, html_filename
             
         except Exception as e:
             print(f"Error generating transcript: {e}")
-            return None
+            return None, None
+
+    async def send_to_transcripts_channel(self, ctx, html_url, html_filename):
+        """Send HTML transcript to the dedicated transcripts channel with embed and button"""
+        try:
+            transcripts_channel = discord.utils.get(ctx.guild.text_channels, name=self.transcripts_channel_name)
+            if not transcripts_channel:
+                print(f"Transcripts channel '{self.transcripts_channel_name}' not found!")
+                return False
+            
+            # Create embed
+            embed = discord.Embed(
+                title=f"📝 Transcript for #{ctx.channel.name}",
+                color=discord.Color.blue(),
+                timestamp=datetime.now()
+            )
+            
+            embed.add_field(name="🌐 Online Version", value=f"[Click here]({html_url})", inline=True)
+            embed.add_field(name="📁 File", value="Download HTML version below", inline=True)
+            embed.add_field(name="🗓️ Generated", value=f"<t:{int(datetime.now().timestamp())}:R>", inline=False)
+            embed.set_footer(text=f"Channel ID: {ctx.channel.id}")
+            
+            # Send embed with button and file
+            await transcripts_channel.send(
+                embed=embed,
+                view=TranscriptView(html_url),
+                file=discord.File(self.transcripts_dir / html_filename, filename=html_filename)
+            )
+            return True
+            
+        except Exception as e:
+            print(f"Error sending to transcripts channel: {e}")
+            return False
+
+    async def send_to_transcripts_channel_interaction(self, interaction, html_url, html_filename):
+        """Send HTML transcript to the dedicated transcripts channel with embed and button (for interactions)"""
+        try:
+            transcripts_channel = discord.utils.get(interaction.guild.text_channels, name=self.transcripts_channel_name)
+            if not transcripts_channel:
+                print(f"Transcripts channel '{self.transcripts_channel_name}' not found!")
+                return False
+            
+            # Create embed
+            embed = discord.Embed(
+                title=f"📝 Transcript for #{interaction.channel.name}",
+                color=discord.Color.blue(),
+                timestamp=datetime.now()
+            )
+            
+            embed.add_field(name="🌐 Online Version", value=f"[Click here]({html_url})", inline=True)
+            embed.add_field(name="📁 File", value="Download HTML version below", inline=True)
+            embed.add_field(name="🗓️ Generated", value=f"<t:{int(datetime.now().timestamp())}:R>", inline=False)
+            embed.set_footer(text=f"Channel ID: {interaction.channel.id} | Generated by {interaction.user.display_name}")
+            
+            # Send embed with button and file
+            await transcripts_channel.send(
+                embed=embed,
+                view=TranscriptView(html_url),
+                file=discord.File(self.transcripts_dir / html_filename, filename=html_filename)
+            )
+            return True
+            
+        except Exception as e:
+            print(f"Error sending to transcripts channel: {e}")
+            return False
+
+    async def handle_transcript_generation(self, ctx_or_interaction, is_interaction=False):
+        """Handle transcript generation for both commands and buttons"""
+        try:
+            if is_interaction:
+                channel = ctx_or_interaction.channel
+                send_response = ctx_or_interaction.followup.send
+            else:
+                channel = ctx_or_interaction.channel
+                send_response = ctx_or_interaction.send
+            
+            # Generate transcript
+            html_url, html_filename = await self.generate_transcript(channel)
+            
+            if not html_url:
+                await send_response("❌ Failed to generate transcript.", ephemeral=is_interaction)
+                return
+            
+            # Send to transcripts channel
+            if is_interaction:
+                success = await self.send_to_transcripts_channel_interaction(ctx_or_interaction, html_url, html_filename)
+            else:
+                success = await self.send_to_transcripts_channel(ctx_or_interaction, html_url, html_filename)
+            
+            if success:
+                await send_response(
+                    f"✅ Transcript generated and sent to <#{self._get_transcripts_channel_id(ctx_or_interaction.guild)}>!",
+                    ephemeral=is_interaction
+                )
+            else:
+                await send_response(
+                    "✅ Transcript generated locally, but couldn't send to transcripts channel.",
+                    ephemeral=is_interaction
+                )
+                
+        except Exception as e:
+            error_msg = f"❌ Error generating transcript: {str(e)}"
+            if is_interaction:
+                await ctx_or_interaction.followup.send(error_msg, ephemeral=True)
+            else:
+                await ctx_or_interaction.send(error_msg, delete_after=15)
+
+    def _get_transcripts_channel_id(self, guild):
+        """Get the transcripts channel ID"""
+        channel = discord.utils.get(guild.text_channels, name=self.transcripts_channel_name)
+        return channel.id if channel else 0
 
     @commands.command()
     @commands.has_permissions(administrator=True)
@@ -264,11 +422,13 @@ class TicketBot(commands.Cog):
         embed = discord.Embed(
             title="Middleman Services",
             description="Select the type of middleman service you need:\n\n"
-                      "• Trial Middleman - $25/6.5K Rbx and below\n"
-                      "• Beginner Middleman - $50/13K Rbx and below\n"
-                      "• Advanced Middleman - $100/25K Rbx and below\n"
-                      "• Head Middleman - Above $100/25K Rbx",
-            color=discord.Color.blue()
+                      "• Trial Middleman - Between 0$-$25/0-6K Rbx\n"
+                      "• Novice Middleman - Between 25$-$50/6K-12K Rbx\n"
+                      "• Advanced Middleman - Between 50$-$75/12K-18K Rbx\n"
+                      "• Expert Middleman - Between 75$-$100/18K-25K Rbx\n"
+                      "• Senior Middleman - Between 100$-$150/25K-35K Rbx\n"
+                      "• Head Middleman - No Limit or Above 150$/35K Rbx",
+
         )
         await ctx.send(embed=embed, view=TicketPanelView())
 
@@ -323,7 +483,7 @@ class TicketBot(commands.Cog):
         
         trade_embed = discord.Embed(
             title="New Middleman Request",
-            color=discord.Color.green()
+            color=discord.Color.blue()
         )
         trade_embed.add_field(name=f"{interaction.user.display_name}'s side", value=your_side, inline=False)
         trade_embed.add_field(name=f"{other_user.display_name}'s side", value=their_side, inline=False)
@@ -343,7 +503,7 @@ class TicketBot(commands.Cog):
         await interaction.followup.send(f"Created your ticket: {ticket_channel.mention}", ephemeral=True)
 
     @commands.command(name="rename")
-    @commands.has_any_role("Trial Middleman", "Beginner Middleman", "Advanced Middleman", "Head Middleman", "Support Team")
+    @commands.has_any_role("Trial Middleman", "Novice Middleman", "Advanced Middleman","Expert Middleman","Senior Middleman", "Head Middleman", "Middleman Team")
     async def rename(self, ctx, *, new_name: str):
         """Rename the current ticket channel to exactly what is specified"""
         if not await self.is_ticket_channel(ctx.channel):
@@ -351,9 +511,9 @@ class TicketBot(commands.Cog):
             return
 
         # Clean the name to meet Discord's requirements while preserving as much as possible
-        cleaned_name = new_name.lower().replace(' ', '-')  # Replace spaces with hyphens
-        cleaned_name = re.sub(r'[^a-z0-9\-_]', '', cleaned_name)  # Remove special chars
-        cleaned_name = cleaned_name[:32]  # Discord's max channel name length
+        cleaned_name = new_name.lower().replace(' ', '-')
+        cleaned_name = re.sub(r'[^a-z0-9\-_]', '', cleaned_name)
+        cleaned_name = cleaned_name[:32]
         
         try:
             await ctx.channel.edit(name=cleaned_name)
@@ -477,7 +637,7 @@ class TicketBot(commands.Cog):
         await interaction.followup.send("Ticket closed.", ephemeral=True)
 
     async def generate_transcript_button(self, interaction: discord.Interaction):
-        """Button handler for generating transcripts"""
+        """Button handler for generating transcripts - shows only one ephemeral message"""
         if not await self.is_ticket_channel(interaction.channel):
             await interaction.followup.send("Not a ticket channel.", ephemeral=True)
             return
@@ -485,46 +645,19 @@ class TicketBot(commands.Cog):
             await interaction.followup.send("You don't have permission.", ephemeral=True)
             return
 
-        await interaction.followup.send("Generating transcript...", ephemeral=True)
-        try:
-            transcript_url = await self.generate_transcript(interaction.channel)
-            
-            if transcript_url:
-                await interaction.followup.send(
-                    f"✅ Transcript generated!\n"
-                    f"🌐 View it at: {transcript_url}",
-                    ephemeral=True
-                )
-            else:
-                await interaction.followup.send("❌ Failed to generate transcript.", ephemeral=True)
-                
-        except Exception as e:
-            await interaction.followup.send(f"❌ Error generating transcript: {e}", ephemeral=True)
+        await interaction.followup.send("🔄 Generating transcript...", ephemeral=True)
+        await self.handle_transcript_generation(interaction, is_interaction=True)
 
     @commands.command()
-    @commands.has_any_role("Trial Middleman", "Beginner Middleman", "Advanced Middleman", "Head Middleman", "Support Team")
+    @commands.has_any_role("Trial Middleman", "Novice Middleman", "Advanced Middleman","Expert Middleman","Senior Middleman", "Head Middleman", "Middleman Team")
     async def transcript(self, ctx):
         """Generate transcript and provide link"""
         if not await self.is_ticket_channel(ctx.channel):
             return await ctx.send("❌ This command can only be used in ticket channels.", delete_after=10)
         
-        try:
-            msg = await ctx.send("🔄 Generating transcript...")
-            
-            transcript_url = await self.generate_transcript(ctx.channel)
-            
-            if transcript_url:
-                await ctx.send(
-                    f"✅ Transcript generated!\n"
-                    f"🌐 View it at: {transcript_url}"
-                )
-            else:
-                await ctx.send("❌ Failed to generate transcript.")
-            
-            await msg.delete()
-            
-        except Exception as e:
-            await ctx.send(f"❌ Error generating transcript: {str(e)}", delete_after=15)
+        msg = await ctx.send("🔄 Generating transcript...")
+        await self.handle_transcript_generation(ctx, is_interaction=False)
+        await msg.delete()
 
     @commands.command()
     async def delete(self, ctx):
@@ -536,17 +669,31 @@ class TicketBot(commands.Cog):
             return
 
         try:
-            await ctx.send("Generating transcript before deletion...")
-            transcript_url = await self.generate_transcript(ctx.channel)
+            # Generate transcript first
+            transcript_msg = await ctx.send("🔄 Generating transcript before deletion...")
+            html_url, html_filename = await self.generate_transcript(ctx.channel)
             
-            if transcript_url:
-                await ctx.send(f"Transcript saved: {transcript_url}")
+            if html_url:
+                # Send to transcripts channel
+                success = await self.send_to_transcripts_channel(ctx, html_url, html_filename)
+                if success:
+                    await ctx.send(f"✅ Transcript saved to <#{self._get_transcripts_channel_id(ctx.guild)}>")
+                else:
+                    await ctx.send("✅ Transcript generated locally")
+            else:
+                await ctx.send("❌ Failed to generate transcript, but will proceed with deletion.")
             
+            # Add 5-second delay before deletion
+            await ctx.send("🗑️ Channel will be deleted in 5 seconds...")
+            await asyncio.sleep(5)
+            
+            # Delete the channel
             if ctx.channel.id in self.ticket_members:
                 del self.ticket_members[ctx.channel.id]
             await ctx.channel.delete()
+            
         except Exception as e:
-            await ctx.send(f"Error during deletion: {e}")
+            await ctx.send(f"❌ Error during deletion: {e}")
 
     async def delete_ticket(self, interaction: discord.Interaction):
         if not await self.is_ticket_channel(interaction.channel):
@@ -557,17 +704,34 @@ class TicketBot(commands.Cog):
             return
 
         try:
-            await interaction.followup.send("Generating transcript before deletion...", ephemeral=True)
-            transcript_url = await self.generate_transcript(interaction.channel)
+            # Generate transcript first
+            await interaction.followup.send("🔄 Generating transcript before deletion...", ephemeral=True)
+            html_url, html_filename = await self.generate_transcript(interaction.channel)
             
-            if transcript_url:
-                await interaction.followup.send(f"Transcript saved: {transcript_url}", ephemeral=True)
+            if html_url:
+                # Send to transcripts channel
+                success = await self.send_to_transcripts_channel_interaction(interaction, html_url, html_filename)
+                if success:
+                    await interaction.followup.send(
+                        f"✅ Transcript saved to <#{self._get_transcripts_channel_id(interaction.guild)}>",
+                        ephemeral=True
+                    )
+                else:
+                    await interaction.followup.send("✅ Transcript generated locally", ephemeral=True)
+            else:
+                await interaction.followup.send("❌ Failed to generate transcript, but will proceed with deletion.", ephemeral=True)
             
+            # Add 5-second delay before deletion
+            await interaction.channel.send("🗑️ Channel will be deleted in 5 seconds...")
+            await asyncio.sleep(5)
+            
+            # Delete the channel
             if interaction.channel.id in self.ticket_members:
                 del self.ticket_members[interaction.channel.id]
             await interaction.channel.delete()
+            
         except Exception as e:
-            await interaction.followup.send(f"Error during deletion: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ Error during deletion: {e}", ephemeral=True)
 
     @commands.command()
     @commands.has_permissions(administrator=True)
