@@ -10,8 +10,14 @@ def index():
     transcripts_dir = Path('transcripts')
     transcripts = []
     
+    print(f"Looking for transcripts in: {transcripts_dir.absolute()}")
+    print(f"Directory exists: {transcripts_dir.exists()}")
+    
     if transcripts_dir.exists() and transcripts_dir.is_dir():
-        for file in transcripts_dir.glob('*.html'):
+        files = list(transcripts_dir.glob('*.html'))
+        print(f"Found {len(files)} HTML files")
+        
+        for file in files:
             if file.is_file():
                 stats = file.stat()
                 transcripts.append({
@@ -30,6 +36,16 @@ def index():
 
 @app.route('/transcripts/<filename>')
 def serve_transcript(filename):
+    transcripts_dir = Path('transcripts')
+    file_path = transcripts_dir / filename
+    
+    print(f"Requested file: {filename}")
+    print(f"Looking for file at: {file_path.absolute()}")
+    print(f"File exists: {file_path.exists()}")
+    
+    if not file_path.exists():
+        return f"File {filename} not found", 404
+    
     return send_from_directory('transcripts', filename)
 
 if __name__ == '__main__':
@@ -45,4 +61,4 @@ if __name__ == '__main__':
         pass
     
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)  # debug=False for production
+    app.run(host='0.0.0.0', port=port, debug=True)  # debug=True for better error messages
