@@ -9,6 +9,24 @@ app = Flask(__name__)
 BASE_DIR = Path(__file__).parent
 TRANSCRIPTS_DIR = BASE_DIR / "transcripts"
 
+# Create directories on startup
+def create_directories():
+    try:
+        TRANSCRIPTS_DIR.mkdir(exist_ok=True)
+        print(f"Created/verified transcripts directory: {TRANSCRIPTS_DIR}")
+    except Exception as e:
+        print(f"Error creating transcripts directory: {e}")
+    
+    try:
+        templates_dir = BASE_DIR / "templates"
+        templates_dir.mkdir(exist_ok=True)
+        print(f"Created/verified templates directory: {templates_dir}")
+    except Exception as e:
+        print(f"Error creating templates directory: {e}")
+
+# Create directories when app starts
+create_directories()
+
 @app.route('/')
 def index():
     transcripts = []
@@ -35,7 +53,7 @@ def index():
     
     return render_template('index.html', 
                          transcripts=transcripts,
-                         current_time=datetime.now().strftime('%Y-%m-%d %H:%M'))
+                         current_time=datetime.now().strftime('%极-%m-%d %H:%M'))
 
 @app.route('/transcripts/<filename>')
 def serve_transcript(filename):
@@ -47,41 +65,6 @@ def serve_transcript(filename):
     
     if not file_path.exists():
         # List all available files for debugging
-        available_files = [f.name for f in TRANSCRIPTS_DIR.glob('*') if f.is_file()]
-        print(f"Available files: {available_files}")
-        return f"File {filename} not found. Available files: {', '.join(available_files)}", 404
-    
-    return send_file(file_path)
-
-# Create directories on startup
-@app.before_first_request
-def create_directories():
-    try:
-        TRANSCRIPTS_DIR.mkdir(exist_ok=True)
-        print(f"Created/verified transcripts directory: {TRANSCRIPTS_DIR}")
-    except Exception as e:
-        print(f"Error creating transcripts directory: {e}")
-    
-    try:
-        templates_dir = BASE_DIR / "templates"
-        templates_dir.mkdir(exist_ok=True)
-        print(f"Created/verified templates directory: {templates_dir}")
-    except Exception as e:
-        print(f"Error creating templates directory: {e}")
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
-
-@app.route('/transcripts/<filename>')
-def serve_transcript(filename):
-    file_path = TRANSCRIPTS_DIR / filename
-    
-    print(f"Requested file: {filename}")
-    print(f"Looking for file at: {file_path.absolute()}")
-    print(f"File exists: {file_path.exists()}")
-    
-    if not file_path.exists():
         available_files = [f.name for f in TRANSCRIPTS_DIR.glob('*') if f.is_file()]
         print(f"Available files: {available_files}")
         return f"File {filename} not found. Available files: {', '.join(available_files)}", 404
@@ -98,3 +81,7 @@ def serve_transcript(filename):
         return "Server error", 500
     
     return send_file(file_path)
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
