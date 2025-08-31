@@ -72,3 +72,29 @@ def create_directories():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
+
+@app.route('/transcripts/<filename>')
+def serve_transcript(filename):
+    file_path = TRANSCRIPTS_DIR / filename
+    
+    print(f"Requested file: {filename}")
+    print(f"Looking for file at: {file_path.absolute()}")
+    print(f"File exists: {file_path.exists()}")
+    
+    if not file_path.exists():
+        available_files = [f.name for f in TRANSCRIPTS_DIR.glob('*') if f.is_file()]
+        print(f"Available files: {available_files}")
+        return f"File {filename} not found. Available files: {', '.join(available_files)}", 404
+    
+    # Check if we can read the file
+    try:
+        with open(file_path, 'r'):
+            pass
+    except PermissionError:
+        print(f"Permission denied for file: {file_path}")
+        return "Permission denied", 403
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        return "Server error", 500
+    
+    return send_file(file_path)
